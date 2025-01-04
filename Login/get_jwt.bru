@@ -1,0 +1,61 @@
+meta {
+  name: get_jwt
+  type: http
+  seq: 2
+}
+
+post {
+  url: https://pulse.zocdoc.com/accounts/v2/authentication/authenticate-password
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+      "username": "{{pulse_username}}",
+      "password": "{{pulse_password}}"
+  }
+}
+
+script:post-response {
+  const cookies = res.getHeader('set-cookie');
+  
+  // Guard against missing cookies header
+  if (!cookies || !Array.isArray(cookies)) {
+      throw new Error("No cookies found in response headers");
+  }
+  
+  // Guard against missing JWT cookie
+  const jwtCookie = cookies.find(cookie => cookie && cookie.startsWith('JWTv2='));
+  if (!jwtCookie) {
+      throw new Error("JWTv2 cookie not found in response");
+  }
+  
+  // Guard against malformed cookie
+  const cookieParts = jwtCookie.split('=');
+  if (cookieParts.length < 2) {
+      throw new Error("JWTv2 cookie is malformed");
+  }
+  
+  // Guard against missing value or malformed value
+  const cookieValue = cookieParts[1].split(';')[0];
+  if (!cookieValue || cookieValue.trim() === '') {
+      throw new Error("JWTv2 cookie value is empty");
+  }
+  
+  try {
+      // Get current environment
+      const currentEnv = bru.getEnvName();
+      
+      // Check if jwt variable exists in current environment
+      if (currentEnv && bru.getEnvVar('jwt', currentEnv) !== undefined) {
+          // Set in current environment
+          bru.setEnvVar('jwt', cookieValue, currentEnv);
+      } else {
+          // Set globally if no environment-specific variable exists
+          bru.setGlobalEnvVar('jwt', cookieValue);
+      }
+  } catch (error) {
+      throw new Error(`Failed to set JWT variable: ${error.message}`);
+  }
+}
